@@ -376,13 +376,13 @@ export class QueryBuilder {
           start_line, end_line, start_column, end_column,
           docstring, signature, visibility,
           is_exported, is_async, is_static, is_abstract,
-          decorators, type_parameters, return_type, updated_at
+          decorators, type_parameters, return_type, updated_at, class_type
         ) VALUES (
           @id, @kind, @name, @qualifiedName, @filePath, @language,
           @startLine, @endLine, @startColumn, @endColumn,
           @docstring, @signature, @visibility,
           @isExported, @isAsync, @isStatic, @isAbstract,
-          @decorators, @typeParameters, @returnType, @updatedAt
+          @decorators, @typeParameters, @returnType, @updatedAt, @classType
         )
       `);
     }
@@ -427,6 +427,7 @@ export class QueryBuilder {
       typeParameters: node.typeParameters ? JSON.stringify(node.typeParameters) : null,
       returnType: node.returnType ?? null,
       updatedAt: node.updatedAt ?? Date.now(),
+      classType: node.classType ?? null,
     });
 
     // Segment vocabulary rides the same write path (and transaction) so it can
@@ -611,7 +612,8 @@ export class QueryBuilder {
           decorators = @decorators,
           type_parameters = @typeParameters,
           return_type = @returnType,
-          updated_at = @updatedAt
+          updated_at = @updatedAt,
+          class_type = @classType
         WHERE id = @id
       `);
     }

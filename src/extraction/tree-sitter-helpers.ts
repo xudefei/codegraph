@@ -125,3 +125,11 @@ export function getPrecedingDocstring(node: SyntaxNode, source: string): string 
   // Strip each comment's syntax markers (language-aware), then join.
   return comments.map(cleanCommentMarkers).join('\n').trim();
 }
+
+export function getClassType(source: string): string | undefined {
+  const cls = /@(Controller|RestController)\s+.*class\s+(\w+)/gs.exec(source);
+  if (cls) {
+    return "controller";
+  }
+  return undefined;
+}

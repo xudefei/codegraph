@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     decorators TEXT, -- JSON array
     type_parameters TEXT, -- JSON array
     return_type TEXT, -- normalized return/result type name (e.g. C++ method return, for receiver-type inference)
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    class_type TEXT(50)
 );
 
 -- Edges: Relationships between nodes

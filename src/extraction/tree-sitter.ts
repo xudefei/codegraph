@@ -16,7 +16,7 @@ import {
   UnresolvedReference,
 } from '../types';
 import { getParser, detectLanguage, isLanguageSupported, isFileLevelOnlyLanguage } from './grammars';
-import { generateNodeId, getNodeText, getChildByField, getPrecedingDocstring } from './tree-sitter-helpers';
+import { generateNodeId, getNodeText, getChildByField, getPrecedingDocstring, getClassType } from './tree-sitter-helpers';
 import { FN_REF_SPECS, captureFnRefCandidates, type FnRefSpec, type FnRefCandidate } from './function-ref';
 import { isGeneratedFile } from './generated-detection';
 import type { LanguageExtractor, ExtractorContext } from './tree-sitter-types';
@@ -1704,11 +1704,12 @@ export class TreeSitterExtractor {
     const docstring = getPrecedingDocstring(node, this.source);
     const visibility = this.extractor.getVisibility?.(node);
     const isExported = this.extractor.isExported?.(node, this.source);
-
+    const classType = getClassType(this.source);
     const classNode = this.createNode(kind, name, node, {
       docstring,
       visibility,
       isExported,
+      classType,
     });
     if (!classNode) return;
 

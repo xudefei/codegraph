@@ -198,6 +198,8 @@ export interface Node {
 
   /** When the node was last updated */
   updatedAt: number;
+  /** class类型，目前只关注controller */
+  classType?: string;
 }
 
 /**
