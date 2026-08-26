@@ -97,6 +97,7 @@ interface NodeRow {
   type_parameters: string | null;
   return_type: string | null;
   updated_at: number;
+  class_type: string | null;
 }
 
 interface EdgeRow {
@@ -175,6 +176,7 @@ function rowToNode(row: NodeRow): Node {
     typeParameters: row.type_parameters ? safeJsonParse(row.type_parameters, undefined) : undefined,
     returnType: row.return_type ?? undefined,
     updatedAt: row.updated_at,
+    classType: row.class_type,
   };
 }
 
@@ -507,6 +509,7 @@ export class QueryBuilder {
           node.typeParameters ? JSON.stringify(node.typeParameters) : null,
           node.returnType ?? null,
           node.updatedAt ?? Date.now(),
+          node.classType ?? null,
         ]);
         if (this.isSegmentableKind(node.kind)) this.collectNameSegmentRows(node.name, segmentRows);
       }
@@ -517,9 +520,9 @@ export class QueryBuilder {
           start_line, end_line, start_column, end_column,
           docstring, signature, visibility,
           is_exported, is_async, is_static, is_abstract,
-          decorators, type_parameters, return_type, updated_at
+          decorators, type_parameters, return_type, updated_at, class_type
         ) VALUES `,
-        '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         rows
       );
       this.runBatched(
