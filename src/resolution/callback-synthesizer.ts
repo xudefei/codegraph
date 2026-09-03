@@ -1006,6 +1006,63 @@ async function kotlinExpectActualEdges(queries: QueryBuilder, onYield: MaybeYiel
   return edges;
 }
 
+/**
+ * Split `s` on the separator only at bracket depth 0, so a separator inside
+ * `<>`, `()` or `[]` (a generic/array/method type) is left untouched. Used to
+ * slice a method signature's parameter list into individual parameters without
+ * breaking on commas inside generic arguments like `Map<String, Integer>`.
+ */
+function splitTopLevel(s: string, sep: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const c of s) {
+    if (c === '<' || c === '(' || c === '[') depth++
+    else if (c === '>' || c === ')' || c === ']') depth--
+    if (c === sep && depth === 0) {
+      out.push(cur.trim())
+      cur = ''
+    } else {
+      cur += c
+    }
+  }
+  out.push(cur.trim())
+  return out
+}
+
+/**
+ * Normalize one parameter of a `ReturnType (Type1 n1, Type2 n2, ...)` method
+ * signature down to its erased type token: strip annotations, a varargs `...`,
+ * any trailing parameter NAME and generic argument, and lowercase it. Two
+ * overloads are then compared by their parameter-type lists alone. Returns an
+ * empty string for a blank/empty slot.
+ */
+function normalizeParamType(raw: string): string {
+  let t = raw.replace(/@\w+(\([^)]*\))?/g, '').trim() // annotations
+  t = t.replace(/\.\.\.\s*$/, '').trim() // varargs marker
+  if (t === '') return ''
+  const toks = t.split(/\s+/).filter(Boolean)
+  if (toks.length >= 2 && /^[a-zA-Z_$][\w$]*$/.test(toks[toks.length - 1] ?? '')) toks.pop() // param NAME
+  return toks.join('').replace(/<.*>/g, '').toLowerCase()
+}
+
+/**
+ * The erased parameter-type list of a method's signature, or null when the
+ * signature has no recognizable Java-style `(params)` region — so callers can
+ * fall back to name-only matching for shapes they can't compare.
+ */
+function methodParamTypes(n: Node): string[] | null {
+  const sig = n.signature ?? ''
+  const open = sig.indexOf('(')
+  const close = sig.lastIndexOf(')')
+  if (open < 0 || close < open) return null
+  return splitTopLevel(sig.slice(open + 1, close), ',').map(normalizeParamType).filter((t) => t !== '')
+}
+
+function sameMethodParams(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((t, i) => t === b[i])
+}
+
 async function interfaceOverrideEdges(queries: QueryBuilder, onYield: MaybeYield): Promise<Edge[]> {
   let scanned255 = 0;
   const edges: Edge[] = [];
@@ -1041,24 +1098,36 @@ async function interfaceOverrideEdges(queries: QueryBuilder, onYield: MaybeYield
     for (const sup of sups) {
       const base = queries.getNodeById(sup.target);
       if (!base || !IFACE_OVERRIDE_LANGS.has(base.language) || base.id === cls.id) continue;
-      // Group impl methods by name to handle OVERLOADS: an interface `list()` and
-      // `list(params)` are distinct nodes and a call may resolve to either, so
-      // link every base overload → every same-name impl overload (keying by name
-      // alone would drop all but one and miss the resolved overload).
-      const implByName = new Map<string, Node[]>();
+      // Group impl methods by NAME first, then narrow to the same OVERLOAD by
+      // comparing parameter types. An interface may declare several overloads
+      // of a method (`list()` and `list(String, Integer, Integer)` are distinct
+      // nodes), and `@Override` guarantees a concrete method's parameter types
+      // are identical to the interface method's — so bridging a base `list()`
+      // to a same-named-but-different-arity impl is a false edge. Only when
+      // BOTH signatures parse can we tell overloads apart; an unparseable
+      // signature falls back to the old name-only bridge rather than risk
+      // dropping a real edge.
+      const implByName = new Map<string, Node[]>()
       for (const m of implMethods) {
-        const arr = implByName.get(m.name);
-        if (arr) arr.push(m); else implByName.set(m.name, [m]);
+        const arr = implByName.get(m.name)
+        if (arr) arr.push(m)
+        else implByName.set(m.name, [m])
       }
-      let added = 0;
+      let added = 0
       for (const bm of methodsOf(base.id)) {
-        if (added >= MAX_CALLBACKS_PER_CHANNEL) break;
+        if (added >= MAX_CALLBACKS_PER_CHANNEL) break
+        const bmParams = methodParamTypes(bm)
         for (const m of implByName.get(bm.name) ?? []) {
-          if (added >= MAX_CALLBACKS_PER_CHANNEL) break;
-          if (bm.id === m.id) continue;
-          const key = `${bm.id}>${m.id}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
+          if (added >= MAX_CALLBACKS_PER_CHANNEL) break
+          if (bm.id === m.id) continue
+          // Same-overload guard: when both signatures parse, drop the pair if the
+          // parameter-type lists differ (a base `list()` must not bridge to an
+          // impl `list(String, Integer, Integer)`); otherwise fall back to name.
+          const mParams = methodParamTypes(m)
+          if (bmParams && mParams && !sameMethodParams(bmParams, mParams)) continue
+          const key = `${bm.id}>${m.id}`
+          if (seen.has(key)) continue
+          seen.add(key)
           edges.push({
             source: bm.id,
             target: m.id,
@@ -1066,8 +1135,8 @@ async function interfaceOverrideEdges(queries: QueryBuilder, onYield: MaybeYield
             line: bm.startLine,
             provenance: 'heuristic',
             metadata: { synthesizedBy: 'interface-impl', via: m.name, registeredAt: `${m.filePath}:${m.startLine}` },
-          });
-          added++;
+          })
+          added++
         }
       }
     }
