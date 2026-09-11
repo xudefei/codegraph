@@ -15,6 +15,28 @@ import {
   CODEGRAPH_SECTION_START,
   CODEGRAPH_SECTION_END,
 } from '../instructions-template';
+import type { ServerInvocation } from '../bundle';
+
+/**
+ * Optional absolute-path override of the MCP command, set by the installer
+ * when running from a self-contained bundle (offline install). When set, every
+ * target that builds its config via `getMcpServerConfig()` points the agent at
+ * this bundle's absolute launcher instead of the bare `codegraph` command name.
+ *
+ * Module-level state is intentional: the installer runs once per process and
+ * the targets are stateless singletons. The default (nothing set) keeps the
+ * online `command: 'codegraph'` behavior, so the existing online install and
+ * all its byte-exact tests are untouched.
+ */
+let bundleInvocation: ServerInvocation | null = null;
+
+export function setBundleInvocation(invocation: ServerInvocation | null): void {
+  bundleInvocation = invocation;
+}
+
+export function getBundleInvocation(): ServerInvocation | null {
+  return bundleInvocation;
+}
 
 /**
  * The MCP-server config block codegraph injects. Same shape across
@@ -22,11 +44,9 @@ import {
  * surrounding wrapper differs. Codex (TOML) builds its own block.
  */
 export function getMcpServerConfig(): { type: string; command: string; args: string[] } {
-  return {
-    type: 'stdio',
-    command: 'codegraph',
-    args: ['serve', '--mcp'],
-  };
+  return bundleInvocation
+    ? { type: 'stdio', ...bundleInvocation }
+    : { type: 'stdio', command: 'codegraph', args: ['serve', '--mcp'] };
 }
 
 /**

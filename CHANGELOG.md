@@ -131,6 +131,8 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   Trails are plain JSON, one file per trail, under `.codegraph/ui/trails/` — already ignored by git, so they stay yours by default. **Export** hands you the file if you'd rather commit one for the team. This is the only thing the viewer writes: it still never indexes, never changes your graph, and never touches a line of your code. Start it with `codegraph ui --read-only` and it won't write even that — saved trails can still be opened, just not saved or deleted.
 
+- **Install CodeGraph on a machine with no internet.** Each release ships a self-contained bundle that vendors its own runtime — no system Node, no network needed to run. Run the installer from inside one (`codegraph install --offline`) and each agent's MCP config is pointed at the bundle's own launcher path and the networked `npm install -g` step is skipped entirely. The bundle's command directory is also added to your PATH, so `codegraph` works in a new terminal too. This is detected automatically, so the plain `codegraph install` also works offline; if you relocate the bundle, re-run install to update the agent configs and the PATH entry.
+
 ### Fixes
 
 #### Screens, links and navigation

@@ -24,7 +24,7 @@ import {
   Location,
   WriteResult,
 } from './types';
-import { atomicWriteFileSync } from './shared';
+import { atomicWriteFileSync, getBundleInvocation } from './shared';
 
 type LineRange = { start: number; end: number };
 
@@ -250,12 +250,18 @@ function escapeRegExp(value: string): string {
 }
 
 function renderCodeGraphMcpChild(): string[] {
+  const inv = getBundleInvocation();
+  // Offline mode: point Hermes at the bundle's absolute launcher, single-quoted
+  // so a path with spaces or Windows backslashes stays valid YAML (backslashes
+  // are literal inside a single-quoted YAML scalar). Args come from the
+  // invocation (the Windows node-direct form carries the JS entry + flags).
+  const command = inv ? `'${inv.command}'` : 'codegraph';
+  const args = inv ? inv.args : ['serve', '--mcp'];
   return [
     '  codegraph:',
-    '    command: codegraph',
+    `    command: ${command}`,
     '    args:',
-    '      - serve',
-    '      - --mcp',
+    ...args.map((a) => `      - ${a}`),
     '    timeout: 120',
     '    connect_timeout: 60',
     '    enabled: true',

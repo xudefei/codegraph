@@ -31,6 +31,9 @@ import { isGitRepo, isSyncHookInstalled, installGitSyncHook } from '../sync/git-
 import { getCodeGraphDir, codeGraphDirName } from '../directory';
 import { getTelemetry, TELEMETRY_DOCS } from '../telemetry';
 import { maybeOfferBetaSignup } from './beta-signup';
+import { resolveBundleInvocation, resolveBundleContext } from './bundle';
+import { setBundleInvocation } from './targets/shared';
+import { addBundleBinToPath } from './path';
 
 // Backwards-compat: keep these named exports — downstream code may
 // import them. The shim in `config-writer.ts` continues to re-export
@@ -72,6 +75,14 @@ export interface RunInstallerOptions {
    * autoAllow=true, target=auto. For scripting / CI.
    */
   yes?: boolean;
+  /**
+   * Offline / self-contained install: wire each agent's MCP config to THIS
+   * bundle's absolute launcher path and skip the networked `npm install -g`
+   * step. Requires running from inside a self-contained bundle
+   * (`release/codegraph-<target>/`). When running inside a bundle this is
+   * auto-detected even without the flag.
+   */
+  offline?: boolean;
 }
 
 /**
@@ -91,6 +102,30 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
   // --yes implies all defaults; explicit flags still win.
   const useDefaults = opts.yes === true;
 
+  // Offline mode: detect a self-contained bundle early so the MCP `command`
+  // can be the bundle's absolute path and Step 2's networked npm install is
+  // skipped. Auto-detected when running from inside a bundle; `--offline`
+  // forces it (and errors if there's no bundle to point at).
+  const bundleInvocation = resolveBundleInvocation();
+  const bundleCtx = resolveBundleContext();
+  const isOffline = opts.offline === true || bundleInvocation !== null;
+  if (opts.offline === true && bundleInvocation === null) {
+    clack.cancel(
+      '--offline requires running from a self-contained bundle (release/codegraph-<target>/). ' +
+        'Use the bundle\'s own `bin/codegraph` to install offline.',
+    );
+    process.exit(1);
+  }
+  if (bundleInvocation) {
+    setBundleInvocation(bundleInvocation);
+    if (opts.offline !== true) {
+      clack.log.info(
+        `Running from a self-contained bundle — wiring the absolute path into agent configs ` +
+          `(skips npm). Re-run install if you move the bundle.`,
+      );
+    }
+  }
+
   // Step 1: which agent targets? Asked FIRST so the user knows what
   // they're committing to before we touch npm or disk. Detection
   // probes the user-provided location if known, else 'global' as the
@@ -103,8 +138,9 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
   }
 
   // Step 2: install the codegraph npm package on PATH (always offered;
-  // matches existing behavior). Skipped when --yes (assume present).
-  if (!useDefaults) {
+  // matches existing behavior). Skipped when --yes (assume present) or in
+  // offline mode (the bundle IS the runnable codegraph — no npm, no PATH).
+  if (!useDefaults && !isOffline) {
     const shouldInstallGlobally = await clack.confirm({
       message: 'Install the codegraph CLI on your PATH? (Required so agents can launch the MCP server)',
       initialValue: true,
@@ -266,6 +302,21 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
       scope: location,
       kind: sawCreated ? 'fresh' : sawUpdated ? 'upgrade' : 'reinstall',
     });
+  }
+
+  // Step 5¼: put the offline bundle's `bin/` on PATH. A normal online install
+  // gets `codegraph` on PATH via `npm install -g`; offline mode skips that, so
+  // the CLI shortcut would never exist. Following install.sh/install.ps1's
+  // convention, make it available (best-effort, never a hard failure).
+  if (isOffline && bundleCtx) {
+    const r = addBundleBinToPath(bundleCtx.bundleRoot, bundleCtx.os);
+    if (r.action === 'added') {
+      clack.log.success(`Added ${r.binDir} to your PATH (${r.for}) — open a new terminal to use \`codegraph\`.`);
+    } else if (r.action === 'unchanged') {
+      clack.log.info(`\`codegraph\` already on PATH via ${r.for}; nothing to add.`);
+    } else if (r.action === 'skipped' || r.action === 'failed') {
+      clack.log.warn(`Could not add \`codegraph\` to your PATH: ${r.reason}`);
+    }
   }
 
   // Step 5½: CodeGraph Pro beta opt-in — the same waitlist as the

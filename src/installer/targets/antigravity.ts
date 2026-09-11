@@ -65,6 +65,7 @@ import {
   WriteResult,
 } from './types';
 import {
+  getBundleInvocation,
   jsonDeepEqual,
   readJsonFile,
   writeJsonFile,
@@ -140,6 +141,12 @@ function resolveCodegraphCommand(): string {
  * header.
  */
 function buildAntigravityEntry(): { command: string; args: string[] } {
+  const inv = getBundleInvocation();
+  if (inv) {
+    // Offline mode: use the bundle's absolute launcher, which also fixes the
+    // stripped-PATH macOS case this target already worries about (see header).
+    return { command: inv.command, args: inv.args };
+  }
   return {
     command: resolveCodegraphCommand(),
     args: ['serve', '--mcp'],

@@ -477,6 +477,29 @@ codegraph install --print-config copilot-vscode      # same, for Copilot in VS C
 | `--init` | (boolean) run `codegraph init` in the current directory after wiring agents | — |
 | `--no-permissions` | (boolean) skip Claude auto-allow list | permissions on |
 | `--print-config <id>` | dump snippet for one agent and exit | — |
+| `--offline` | point agents at this self-contained bundle's absolute path; skip npm | auto-detected inside a bundle |
+
+### Offline / air-gapped install
+
+Every release ships a **self-contained bundle** (`release/codegraph-<target>`) that
+vendors its own Node runtime + compiled app — it needs no system Node and no
+network to run. On a machine that can't reach npm, copy the right bundle for its
+OS (`bin/codegraph` on macOS/Linux, `bin/codegraph.cmd` on Windows), extract it,
+and install from inside it:
+
+```bash
+cd codegraph-darwin-arm64
+./bin/codegraph install --offline --yes    # wires agents to THIS bundle, no npm
+```
+
+Running the installer from inside a bundle wires each agent's MCP config to the
+bundle's **absolute launcher path** instead of a PATH-based `codegraph` command,
+skips the networked `npm install -g` step entirely, and adds the bundle's command
+directory to your PATH (so `codegraph` works in a new terminal too). This is
+detected automatically, so the plain `./bin/codegraph install` also works
+offline. Run the installer's `--offline` flag inside a bundle to make the intent
+explicit. **If you relocate the bundle, re-run install** to update the agent
+configs and the PATH entry to the new path.
 
 ### 2. Restart Your Agent
 

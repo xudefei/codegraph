@@ -2539,6 +2539,7 @@ program
   .option('--no-permissions', 'Skip writing the auto-allow permissions list (Claude Code only)')
   .option('--print-config <id>', 'Print MCP config snippet for the named agent and exit (no file writes)')
   .option('--refresh', 'Rewrite what previous installs configured, for already-configured agents only (never adds new ones). Run automatically by `codegraph upgrade`')
+  .option('--offline', "Offline/self-contained install: point each agent's MCP config at this bundle's absolute path and skip the npm step. Auto-detected when running from a bundle")
   .action(async (opts: {
     target?: string;
     location?: string;
@@ -2547,6 +2548,7 @@ program
     permissions?: boolean;
     printConfig?: string;
     refresh?: boolean;
+    offline?: boolean;
   }) => {
     if (opts.printConfig) {
       const { getTarget, listTargetIds } = await import('../installer/targets/registry');
@@ -2556,6 +2558,11 @@ program
         error(`Unknown target "${opts.printConfig}". Known: ${known}.`);
         process.exit(1);
       }
+      // When running from a bundle, print the offline absolute command.
+      const { resolveBundleInvocation } = await import('../installer/bundle');
+      const { setBundleInvocation } = await import('../installer/targets/shared');
+      const inv = resolveBundleInvocation();
+      if (inv) setBundleInvocation(inv);
       const loc = (opts.location === 'local' ? 'local' : 'global') as 'global' | 'local';
       process.stdout.write(target.printConfig(loc));
       return;
@@ -2570,6 +2577,12 @@ program
     if (opts.refresh) {
       const { refreshTargets } = await import('../installer');
       const { ALL_TARGETS } = await import('../installer/targets/registry');
+      // From inside a bundle, refresh rewrites the absolute-command MCP configs
+      // too (a moved bundle gets its new path, see setBundleInvocation).
+      const { resolveBundleInvocation } = await import('../installer/bundle');
+      const { setBundleInvocation } = await import('../installer/targets/shared');
+      const inv = resolveBundleInvocation();
+      if (inv) setBundleInvocation(inv);
       if (opts.location && opts.location !== 'global' && opts.location !== 'local') {
         error(`--location must be "global" or "local" (got "${opts.location}").`);
         process.exit(1);
@@ -2616,6 +2629,7 @@ program
         location: opts.location as 'global' | 'local' | undefined,
         autoAllow,
         yes: opts.yes,
+        offline: opts.offline,
       });
     } catch (err) {
       error(err instanceof Error ? err.message : String(err));

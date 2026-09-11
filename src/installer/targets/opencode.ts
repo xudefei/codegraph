@@ -47,6 +47,7 @@ import {
 } from './types';
 import {
   atomicWriteFileSync,
+  getBundleInvocation,
   jsonDeepEqual,
   removeMarkedSection,
   upsertInstructionsEntry,
@@ -116,9 +117,13 @@ function parseConfig(text: string): Record<string, any> {
 }
 
 function getOpencodeServerEntry(): { type: string; command: string[]; enabled: boolean } {
+  const inv = getBundleInvocation();
   return {
     type: 'local',
-    command: ['codegraph', 'serve', '--mcp'],
+    // opencode's command is a single flat array (binary + args). In offline
+    // mode the Windows node-direct invocation already carries the JS entry +
+    // flags in `inv.args`, so spreading is correct on every platform.
+    command: inv ? [inv.command, ...inv.args] : ['codegraph', 'serve', '--mcp'],
     enabled: true,
   };
 }
